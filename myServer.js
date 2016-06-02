@@ -4,10 +4,57 @@ var http = require('http'),
 
 // Cache
 var cache = {};
+var cookies;
+
+var route = { 
+ '/' : 
+    {'GET' : function(req, res) {
+    res.writeHead(200, {
+      'Set-Cookie': 'mycookie=test',
+      'Content-Type': 'text/html'
+    });
+    var ip = req.connection.remoteAddress;
+    res.write('<h1>Welcome</h1>Your IP: ' + ip);
+    res.end('<pre>' + JSON.stringify(cookies) + '</pre>');
+ }},
+ '/person' : 
+    {'GET' : function(req, res) {
+         person.read(function(err, obj){
+          if(!err){
+            var data = JSON.stringify(obj);
+            cache[req.url] = data;
+            // HTTP reply  
+            res.writeHead(200);
+            res.end(data);
+          } else {
+            res.writeHead(500);
+            res.end('Read error');
+          }});
+    }, 
+    'POST' : function(req, res) {
+      var body = [];
+      req.on('data', function(chunk) {body.push(chunk);}). on('end', function() {
+        var data = Buffer.concat(body).toString();
+        var obj = JSON.parse(data);
+        person.write(obj, function(err) {
+          if (!err) {
+            res.writeHead(200);
+            res.end('File saved');
+          } else {
+            res.writeHead(500);
+            res.end('Write error');
+          }
+        });
+        cache[req.url] = data;
+      });    
+    }
+  }
+};
+
 
 // HTTP Server
 http.createServer(function (req, res) {
-  var cookies = parseCookie(req);
+  cookies = parseCookie(req);
     
   logging(req);
 
@@ -16,56 +63,10 @@ http.createServer(function (req, res) {
     res.writeHead(200);
     res.end(cache[req.url]);
   } else {
-
     // Routing
-    if (req.url === '/') {
-      if (req.method === 'GET') {
-        res.writeHead(200, {
-          'Set-Cookie': 'mycookie=test',
-          'Content-Type': 'text/html'
-        });
-        var ip = req.connection.remoteAddress;
-        res.write('<h1>Welcome</h1>Your IP: ' + ip);
-        res.end('<pre>' + JSON.stringify(cookies) + '</pre>');
-      }
-    } else if (req.url === '/person') {
-      if (req.method === 'GET') {
-        person.read(function(err, obj){
-          if(!err){
-            
-            var data = JSON.stringify(obj);
-            cache[req.url] = data;
-             
-            // HTTP reply  
-            res.writeHead(200);
-            res.end(data);
-          } else {
-            res.writeHead(500);
-            res.end('Read error');
-          }
-        }); 
-      } else if (req.method === 'POST') {
-
-        // Receiving POST data
-        var body = [];
-        req.on('data', function(chunk) {
-          body.push(chunk);
-        }).on('end', function() {
-          var data = Buffer.concat(body).toString();
-          var obj = JSON.parse(data);
-          person.write(obj, function(err) {
-            if (!err) {
-              res.writeHead(200);
-              res.end('File saved');
-            } else {
-              res.writeHead(500);
-              res.end('Write error');
-            }
-          });
-          cache[req.url] = data;
-        });
-      }
-    } else {
+    try {
+      route[req.url][req.method](req, res);  
+    } catch (err) {
       res.writeHead(404);
       res.end('Path not found');
     }
